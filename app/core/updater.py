@@ -154,7 +154,9 @@ def apply_update(new_exe: Path) -> bool:
         "    timeout /t 1 /nobreak >NUL\n"
         "    goto :wait\n"
         ")\n"
-        f'move /Y "{new_exe}" "{exe}"\n'
+        # copy works across drives; move does not
+        f'copy /Y "{new_exe}" "{exe}"\n'
+        f'del /F /Q "{new_exe}"\n'
         f'start "" "{exe}"\n'
         'del "%~f0"\n'
     )
