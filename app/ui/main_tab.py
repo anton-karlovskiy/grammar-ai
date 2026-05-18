@@ -19,7 +19,7 @@ from app.db.database import (
     save_history,
     save_selected_tone,
 )
-from app.schemas.models import LLMConfig, PolishedText
+from app.schemas.models import Goal, LLMConfig, PolishedText
 from app.ui.settings_dialog import SettingsDialog
 
 
@@ -29,16 +29,16 @@ class _PolishedItem(ttk.Frame):
     def __init__(
         self,
         parent: tk.Widget,
-        goal: str,
+        goal: Goal,
         text: str,
-        on_use: Callable[[str, str], None],
+        on_use: Callable[[Goal, str], None],
     ) -> None:
         super().__init__(parent, relief="groove", borderwidth=1)
         self._goal = goal
         self._on_use = on_use
         self._build(goal, text)
 
-    def _build(self, goal: str, text: str) -> None:
+    def _build(self, goal: Goal, text: str) -> None:
         header = ttk.Frame(self)
         header.pack(fill="x", padx=4, pady=(4, 0))
         ttk.Label(header, text=goal.capitalize(), font=("", 8, "bold")).pack(side="left")
@@ -98,7 +98,7 @@ class MainTab(ttk.Frame):
     ) -> None:
         super().__init__(parent)
         self._config: LLMConfig = load_config()
-        self._selected_goals: list[str] = load_selected_goals()
+        self._selected_goals: list[Goal] = load_selected_goals()
         self._hotkey = HotkeyManager(self._on_hotkey_text)
         self._items: list[_PolishedItem] = []
         self._received = 0
@@ -353,7 +353,7 @@ class MainTab(ttk.Frame):
 
     # ------------------------------------------------------------------ Use
 
-    def _use_text(self, original: str, goal: str, text: str) -> None:
+    def _use_text(self, original: str, goal: Goal, text: str) -> None:
         tone = self._tone_var.get().lower()
         save_history(original, text, tone, goal)
         hwnd = self._hotkey.last_hwnd

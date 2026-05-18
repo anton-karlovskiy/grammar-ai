@@ -1,6 +1,21 @@
 from datetime import datetime
+from enum import StrEnum
 
 from pydantic import BaseModel
+
+
+class Goal(StrEnum):
+    INFORM = "inform"
+    PERSUADE = "persuade"
+    REASSURE = "reassure"
+    MOTIVATE = "motivate"
+    CLARIFY = "clarify"
+    APOLOGIZE = "apologize"
+    REQUEST = "request"
+    ACKNOWLEDGE = "acknowledge"
+    ENGAGE = "engage"
+    REVIEW = "review"
+    CLEAN = "clean"
 
 
 class LLMConfig(BaseModel):
@@ -11,7 +26,7 @@ class LLMConfig(BaseModel):
 
 class PolishedText(BaseModel):
     tone: str
-    goal: str
+    goal: Goal
     text: str
 
 

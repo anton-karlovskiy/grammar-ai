@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from loguru import logger
 
 from app.config import DB_PATH, HISTORY_MAX_ENTRIES
-from app.schemas.models import HistoryEntry, LLMConfig
+from app.schemas.models import Goal, HistoryEntry, LLMConfig
 
 
 def _connect() -> sqlite3.Connection:
@@ -121,7 +121,7 @@ def get_history_count() -> int:
     return row["count"]
 
 
-def load_selected_goals() -> list[str]:
+def load_selected_goals() -> list[Goal]:
     from app.config import GOALS
 
     with _connect() as conn:
@@ -129,13 +129,13 @@ def load_selected_goals() -> list[str]:
     if not row:
         return list(GOALS)
     try:
-        saved = json.loads(row["value"])
-        return [g for g in GOALS if g in saved]
+        saved = set(json.loads(row["value"]))
+        return [g for g in GOALS if g.value in saved]
     except Exception:
         return list(GOALS)
 
 
-def save_selected_goals(goals: list[str]) -> None:
+def save_selected_goals(goals: list[Goal]) -> None:
     with _connect() as conn:
         conn.execute(
             "INSERT OR REPLACE INTO settings (key, value) VALUES ('selected_goals', ?)",

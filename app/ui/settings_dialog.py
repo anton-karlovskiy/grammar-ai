@@ -4,7 +4,7 @@ from typing import Callable, Optional
 
 from loguru import logger
 
-from app.config import GOALS
+from app.config import GOAL_DESCRIPTIONS, GOALS, GOALS_PRESET_DEFAULT, GOALS_PRESET_MIN
 from app.core.autorun import configure_autorun
 from app.core.llm import check_connection
 from app.db.database import (
@@ -14,7 +14,38 @@ from app.db.database import (
     save_config,
     save_selected_goals,
 )
-from app.schemas.models import LLMConfig
+from app.schemas.models import Goal, LLMConfig
+
+
+class _Tooltip:
+    def __init__(self, widget: tk.Widget, text: str) -> None:
+        self._widget = widget
+        self._text = text
+        self._tip: Optional[tk.Toplevel] = None
+        widget.bind("<Enter>", self._show)
+        widget.bind("<Leave>", self._hide)
+
+    def _show(self, _event: tk.Event) -> None:  # type: ignore[type-arg]
+        x = self._widget.winfo_rootx() + 20
+        y = self._widget.winfo_rooty() + self._widget.winfo_height() + 2
+        self._tip = tk.Toplevel(self._widget)
+        self._tip.wm_overrideredirect(True)
+        self._tip.wm_geometry(f"+{x}+{y}")
+        tk.Label(
+            self._tip,
+            text=self._text,
+            background="#ffffe0",
+            relief="solid",
+            borderwidth=1,
+            font=("", 8),
+            padx=4,
+            pady=2,
+        ).pack()
+
+    def _hide(self, _event: tk.Event) -> None:  # type: ignore[type-arg]
+        if self._tip:
+            self._tip.destroy()
+            self._tip = None
 
 
 class SettingsDialog(tk.Toplevel):
@@ -64,14 +95,32 @@ class SettingsDialog(tk.Toplevel):
         # Goal selection
         goals_lf = ttk.LabelFrame(f, text="Goals to generate", padding=(8, 4))
         goals_lf.grid(row=4, column=0, columnspan=2, sticky="ew", padx=8, pady=(4, 0))
+
+        preset_row = ttk.Frame(goals_lf)
+        preset_row.grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 4))
+        ttk.Button(
+            preset_row, text="Minimum", width=9, command=lambda: self._set_goals(GOALS_PRESET_MIN)
+        ).pack(side="left", padx=(0, 4))
+        ttk.Button(
+            preset_row,
+            text="Default",
+            width=9,
+            command=lambda: self._set_goals(GOALS_PRESET_DEFAULT),
+        ).pack(side="left", padx=4)
+        ttk.Button(preset_row, text="All", width=9, command=lambda: self._set_goals(GOALS)).pack(
+            side="left", padx=4
+        )
+
         saved_goals = load_selected_goals()
-        self._goal_vars: dict[str, tk.BooleanVar] = {}
+        self._goal_vars: dict[Goal, tk.BooleanVar] = {}
+        self._tooltips: list[_Tooltip] = []
         for i, goal in enumerate(GOALS):
             var = tk.BooleanVar(value=goal in saved_goals)
             self._goal_vars[goal] = var
-            ttk.Checkbutton(goals_lf, text=goal.capitalize(), variable=var).grid(
-                row=i // 3, column=i % 3, sticky="w", padx=6, pady=2
-            )
+            cb = ttk.Checkbutton(goals_lf, text=goal.capitalize(), variable=var)
+            cb.grid(row=(i // 3) + 1, column=i % 3, sticky="w", padx=6, pady=2)
+            if goal in GOAL_DESCRIPTIONS:
+                self._tooltips.append(_Tooltip(cb, GOAL_DESCRIPTIONS[goal]))
 
         self._status = ttk.Label(f, text="", foreground="gray", font=("", 8), wraplength=400)
         self._status.grid(row=5, column=0, columnspan=2, sticky="w", padx=8, pady=2)
@@ -99,7 +148,11 @@ class SettingsDialog(tk.Toplevel):
             api_key=self._key.get().strip(),
         )
 
-    def _selected_goals(self) -> list[str]:
+    def _set_goals(self, preset: list[Goal]) -> None:
+        for goal, var in self._goal_vars.items():
+            var.set(goal in preset)
+
+    def _selected_goals(self) -> list[Goal]:
         return [g for g in GOALS if self._goal_vars[g].get()]
 
     def _test(self) -> None:
@@ -124,9 +177,8 @@ class SettingsDialog(tk.Toplevel):
             return
 
         save_config(cfg)
-        self._on_save(cfg)
-
         save_selected_goals(goals)
+        self._on_save(cfg)
 
         autorun = self._autorun_var.get()
         save_autorun(autorun)

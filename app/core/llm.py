@@ -5,7 +5,7 @@ from loguru import logger
 from openai import OpenAI, OpenAIError
 
 from app.config import GOALS as ALL_GOALS
-from app.schemas.models import LLMConfig, PolishedText
+from app.schemas.models import Goal, LLMConfig, PolishedText
 
 _SYSTEM = """
 ## HARD RULE — Line endings (enforce before anything else)
@@ -75,7 +75,7 @@ def _get_client(config: LLMConfig) -> OpenAI:
     return _clients[key]
 
 
-def _format_batch_request(text: str, tone: str, goals: list[str]) -> str:
+def _format_batch_request(text: str, tone: str, goals: list[Goal]) -> str:
     line_count = text.count("\n")
     goal_entries = "\n".join(f'  "{g}": "<polished text with {g} goal>"' for g in goals)
     tone_extra = _TONE_EXTRA.get(tone, "")
@@ -96,10 +96,10 @@ def polish_text(
     text: str,
     tone: str,
     config: LLMConfig,
-    goals: Optional[list[str]] = None,
+    goals: Optional[list[Goal]] = None,
     on_result: Optional[Callable[[PolishedText], None]] = None,
 ) -> list[PolishedText]:
-    active_goals = goals if goals else list(ALL_GOALS)
+    active_goals: list[Goal] = goals if goals else list(ALL_GOALS)
     client = _get_client(config)
     response = client.chat.completions.create(
         model=config.model,
