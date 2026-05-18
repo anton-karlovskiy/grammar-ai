@@ -2,6 +2,7 @@
 """Build script for Grammar AI using Nuitka (standalone mode)."""
 
 import argparse
+import os
 import subprocess
 import sys
 import tomllib
@@ -42,7 +43,7 @@ def build_exe(debug: bool = False) -> int:
         "nuitka",
         "--standalone",
         "--assume-yes-for-downloads",
-        "--jobs=auto",
+        f"--jobs={os.cpu_count() or 1}",
         f"--output-dir={build_dir}",
         "--output-filename=grammar-ai.exe",
         "--enable-plugin=tk-inter",
