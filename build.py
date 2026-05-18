@@ -25,7 +25,9 @@ def build_exe(debug: bool = False) -> int:
     standalone_dir = build_dir / "grammar-ai.dist"
 
     nuitka_args = [
-        sys.executable, "-m", "nuitka",
+        sys.executable,
+        "-m",
+        "nuitka",
         "--standalone",
         "--assume-yes-for-downloads",
         "--jobs=auto",
@@ -53,6 +55,8 @@ def build_exe(debug: bool = False) -> int:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Build Grammar AI executable")
-    parser.add_argument("--debug", action="store_true", help="Build with console window for debugging")
+    parser.add_argument(
+        "--debug", action="store_true", help="Build with console window for debugging"
+    )
     args = parser.parse_args()
     sys.exit(build_exe(debug=args.debug))
