@@ -4,9 +4,16 @@ from typing import Callable, Optional
 
 from loguru import logger
 
+from app.config import GOALS
 from app.core.autorun import configure_autorun
 from app.core.llm import check_connection
-from app.db.database import load_autorun, save_autorun, save_config
+from app.db.database import (
+    load_autorun,
+    load_selected_goals,
+    save_autorun,
+    save_config,
+    save_selected_goals,
+)
 from app.schemas.models import LLMConfig
 
 
@@ -54,11 +61,23 @@ class SettingsDialog(tk.Toplevel):
             row=3, column=0, columnspan=2, sticky="w", padx=8, pady=4
         )
 
+        # Goal selection
+        goals_lf = ttk.LabelFrame(f, text="Goals to generate", padding=(8, 4))
+        goals_lf.grid(row=4, column=0, columnspan=2, sticky="ew", padx=8, pady=(4, 0))
+        saved_goals = load_selected_goals()
+        self._goal_vars: dict[str, tk.BooleanVar] = {}
+        for i, goal in enumerate(GOALS):
+            var = tk.BooleanVar(value=goal in saved_goals)
+            self._goal_vars[goal] = var
+            ttk.Checkbutton(goals_lf, text=goal.capitalize(), variable=var).grid(
+                row=i // 3, column=i % 3, sticky="w", padx=6, pady=2
+            )
+
         self._status = ttk.Label(f, text="", foreground="gray", font=("", 8), wraplength=400)
-        self._status.grid(row=4, column=0, columnspan=2, sticky="w", padx=8, pady=2)
+        self._status.grid(row=5, column=0, columnspan=2, sticky="w", padx=8, pady=2)
 
         btn_row = ttk.Frame(f)
-        btn_row.grid(row=5, column=0, columnspan=2, pady=(8, 0))
+        btn_row.grid(row=6, column=0, columnspan=2, pady=(8, 0))
         ttk.Button(btn_row, text="Test Connection", command=self._test).pack(side="left", padx=4)
         ttk.Button(btn_row, text="Save", command=self._save).pack(side="left", padx=4)
         ttk.Button(btn_row, text="Cancel", command=self.destroy).pack(side="left", padx=4)
@@ -80,6 +99,9 @@ class SettingsDialog(tk.Toplevel):
             api_key=self._key.get().strip(),
         )
 
+    def _selected_goals(self) -> list[str]:
+        return [g for g in GOALS if self._goal_vars[g].get()]
+
     def _test(self) -> None:
         self._status.config(text="Testing…", foreground="gray")
         self.update_idletasks()
@@ -95,8 +117,16 @@ class SettingsDialog(tk.Toplevel):
         if not cfg.model:
             messagebox.showwarning("Missing field", "Model name is required.", parent=self)
             return
+
+        goals = self._selected_goals()
+        if not goals:
+            messagebox.showwarning("No goals selected", "Select at least one goal.", parent=self)
+            return
+
         save_config(cfg)
         self._on_save(cfg)
+
+        save_selected_goals(goals)
 
         autorun = self._autorun_var.get()
         save_autorun(autorun)

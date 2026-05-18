@@ -12,7 +12,13 @@ from app.config import GOALS, HOTKEYS, LOG_PATH, TONES
 from app.core.focus import restore_focus_and_paste
 from app.core.hotkey import HotkeyManager
 from app.core.llm import polish_text
-from app.db.database import load_config, load_selected_tone, save_history, save_selected_tone
+from app.db.database import (
+    load_config,
+    load_selected_goals,
+    load_selected_tone,
+    save_history,
+    save_selected_tone,
+)
 from app.schemas.models import LLMConfig, PolishedText
 from app.ui.settings_dialog import SettingsDialog
 
@@ -92,6 +98,7 @@ class MainTab(ttk.Frame):
     ) -> None:
         super().__init__(parent)
         self._config: LLMConfig = load_config()
+        self._selected_goals: list[str] = load_selected_goals()
         self._hotkey = HotkeyManager(self._on_hotkey_text)
         self._items: list[_PolishedItem] = []
         self._received = 0
@@ -214,6 +221,7 @@ class MainTab(ttk.Frame):
 
     def _on_config_saved(self, config: LLMConfig) -> None:
         self._config = config
+        self._selected_goals = load_selected_goals()
 
     def _on_tone_change(self, _event: tk.Event) -> None:  # type: ignore[type-arg]
         save_selected_tone(self._tone_var.get().lower())
@@ -271,9 +279,11 @@ class MainTab(ttk.Frame):
 
         tone = self._tone_var.get().lower()
 
+        goals = list(self._selected_goals)
+
         def worker() -> None:
             try:
-                polish_text(text, tone, config, on_result=on_result)
+                polish_text(text, tone, config, goals=goals, on_result=on_result)
                 self.after(0, lambda: self._set_status("Polished versions ready", "green"))
             except Exception as exc:
                 error_msg = str(exc)
@@ -320,7 +330,7 @@ class MainTab(ttk.Frame):
 
     def _add_result(self, original: str, result: PolishedText) -> None:
         self._received += 1
-        self._set_status(f"Polishing… ({self._received}/{len(GOALS)})", "blue")
+        self._set_status(f"Polishing… ({self._received}/{len(self._selected_goals)})", "blue")
         item = _PolishedItem(
             self._results_frame,
             goal=result.goal,

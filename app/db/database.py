@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from datetime import datetime, timezone
 
@@ -118,6 +119,29 @@ def get_history_count() -> int:
     with _connect() as conn:
         row = conn.execute("SELECT COUNT(*) as count FROM history").fetchone()
     return row["count"]
+
+
+def load_selected_goals() -> list[str]:
+    from app.config import GOALS
+
+    with _connect() as conn:
+        row = conn.execute("SELECT value FROM settings WHERE key = 'selected_goals'").fetchone()
+    if not row:
+        return list(GOALS)
+    try:
+        saved = json.loads(row["value"])
+        return [g for g in GOALS if g in saved]
+    except Exception:
+        return list(GOALS)
+
+
+def save_selected_goals(goals: list[str]) -> None:
+    with _connect() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES ('selected_goals', ?)",
+            (json.dumps(goals),),
+        )
+    logger.debug(f"Selected goals saved: {goals}")
 
 
 def load_autorun() -> bool:

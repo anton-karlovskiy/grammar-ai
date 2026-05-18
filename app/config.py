@@ -19,6 +19,7 @@ ERROR_LOG_PATH = DATA_DIR / "error.log"
 TONES: list[str] = [
     "professional",
     "casual",
+    "chatting",
     "formal",
     "friendly",
     "empathetic",
