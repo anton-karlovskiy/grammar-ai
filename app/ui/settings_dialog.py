@@ -4,10 +4,48 @@ from typing import Callable, Optional
 
 from loguru import logger
 
+from app.config import GOAL_DESCRIPTIONS, GOALS, GOALS_PRESET_DEFAULT, GOALS_PRESET_MIN
 from app.core.autorun import configure_autorun
 from app.core.llm import check_connection
-from app.db.database import load_autorun, save_autorun, save_config
-from app.schemas.models import LLMConfig
+from app.db.database import (
+    load_autorun,
+    load_selected_goals,
+    save_autorun,
+    save_config,
+    save_selected_goals,
+)
+from app.schemas.models import Goal, LLMConfig
+
+
+class _Tooltip:
+    def __init__(self, widget: tk.Widget, text: str) -> None:
+        self._widget = widget
+        self._text = text
+        self._tip: Optional[tk.Toplevel] = None
+        widget.bind("<Enter>", self._show)
+        widget.bind("<Leave>", self._hide)
+
+    def _show(self, _event: tk.Event) -> None:  # type: ignore[type-arg]
+        x = self._widget.winfo_rootx() + 20
+        y = self._widget.winfo_rooty() + self._widget.winfo_height() + 2
+        self._tip = tk.Toplevel(self._widget)
+        self._tip.wm_overrideredirect(True)
+        self._tip.wm_geometry(f"+{x}+{y}")
+        tk.Label(
+            self._tip,
+            text=self._text,
+            background="#ffffe0",
+            relief="solid",
+            borderwidth=1,
+            font=("", 8),
+            padx=4,
+            pady=2,
+        ).pack()
+
+    def _hide(self, _event: tk.Event) -> None:  # type: ignore[type-arg]
+        if self._tip:
+            self._tip.destroy()
+            self._tip = None
 
 
 class SettingsDialog(tk.Toplevel):
@@ -54,11 +92,49 @@ class SettingsDialog(tk.Toplevel):
             row=3, column=0, columnspan=2, sticky="w", padx=8, pady=4
         )
 
+        # Goal selection
+        goals_lf = ttk.LabelFrame(f, text="Goals to generate", padding=(8, 4))
+        goals_lf.grid(row=4, column=0, columnspan=2, sticky="ew", padx=8, pady=(4, 0))
+
+        preset_row = ttk.Frame(goals_lf)
+        preset_row.grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 4))
+        ttk.Button(
+            preset_row, text="Minimum", width=9, command=lambda: self._set_goals(GOALS_PRESET_MIN)
+        ).pack(side="left", padx=(0, 4))
+        ttk.Button(
+            preset_row,
+            text="Default",
+            width=9,
+            command=lambda: self._set_goals(GOALS_PRESET_DEFAULT),
+        ).pack(side="left", padx=4)
+        ttk.Button(preset_row, text="All", width=9, command=lambda: self._set_goals(GOALS)).pack(
+            side="left", padx=4
+        )
+
+        saved_goals = load_selected_goals()
+        self._goal_vars: dict[Goal, tk.BooleanVar] = {}
+        self._tooltips: list[_Tooltip] = []
+        for i, goal in enumerate(GOALS):
+            var = tk.BooleanVar(value=goal in saved_goals)
+            self._goal_vars[goal] = var
+            cb = ttk.Checkbutton(goals_lf, text=goal.capitalize(), variable=var)
+            cb.grid(row=(i // 3) + 1, column=i % 3, sticky="w", padx=6, pady=2)
+            if goal in GOAL_DESCRIPTIONS:
+                self._tooltips.append(_Tooltip(cb, GOAL_DESCRIPTIONS[goal]))
+
+        disclaimer_row = (len(GOALS) - 1) // 3 + 2
+        ttk.Label(
+            goals_lf,
+            text="More goals = longer generation time.",
+            foreground="gray",
+            font=("", 8, "italic"),
+        ).grid(row=disclaimer_row, column=0, columnspan=3, sticky="w", padx=6, pady=(4, 2))
+
         self._status = ttk.Label(f, text="", foreground="gray", font=("", 8), wraplength=400)
-        self._status.grid(row=4, column=0, columnspan=2, sticky="w", padx=8, pady=2)
+        self._status.grid(row=5, column=0, columnspan=2, sticky="w", padx=8, pady=2)
 
         btn_row = ttk.Frame(f)
-        btn_row.grid(row=5, column=0, columnspan=2, pady=(8, 0))
+        btn_row.grid(row=6, column=0, columnspan=2, pady=(8, 0))
         ttk.Button(btn_row, text="Test Connection", command=self._test).pack(side="left", padx=4)
         ttk.Button(btn_row, text="Save", command=self._save).pack(side="left", padx=4)
         ttk.Button(btn_row, text="Cancel", command=self.destroy).pack(side="left", padx=4)
@@ -80,6 +156,13 @@ class SettingsDialog(tk.Toplevel):
             api_key=self._key.get().strip(),
         )
 
+    def _set_goals(self, preset: list[Goal]) -> None:
+        for goal, var in self._goal_vars.items():
+            var.set(goal in preset)
+
+    def _selected_goals(self) -> list[Goal]:
+        return [g for g in GOALS if self._goal_vars[g].get()]
+
     def _test(self) -> None:
         self._status.config(text="Testing…", foreground="gray")
         self.update_idletasks()
@@ -95,7 +178,14 @@ class SettingsDialog(tk.Toplevel):
         if not cfg.model:
             messagebox.showwarning("Missing field", "Model name is required.", parent=self)
             return
+
+        goals = self._selected_goals()
+        if not goals:
+            messagebox.showwarning("No goals selected", "Select at least one goal.", parent=self)
+            return
+
         save_config(cfg)
+        save_selected_goals(goals)
         self._on_save(cfg)
 
         autorun = self._autorun_var.get()

@@ -49,6 +49,12 @@ Grammar AI supports any LLM provider that is OpenAI-compatible, including OpenAI
 - **Model**: `meta-llama/llama-4-scout-17b-16e-instruct`
 - **API Key**: `YOUR_GROQ_API_KEY`
 
+### Example Configuration (OpenAI)
+
+- **Base URL**: `https://api.openai.com/v1`
+- **Model**: `gpt-4o-mini`
+- **API Key**: `YOUR_OPENAI_API_KEY`
+
 To configure:
 1. Launch the application.
 2. Open Settings and enter your API configuration.
@@ -64,14 +70,14 @@ Download the latest prebuilt executable for Windows from the [Releases](https://
 ### From Source
 
 1. Clone the repository.
-2. Install dependencies: `pip install -e .`
-3. Run: `python main.py`
+2. Install dependencies: `uv sync`
+3. Run: `uv run python main.py`
 
 ### Building from Source
 
 To build a standalone executable:
 
-1. Install dependencies including build tools: `pip install -e ".[dev]"`
+1. Install dependencies including build tools: `uv sync --extra dev`
 2. Run the build script:
    - Release build: `python build.py` or `build.bat`
    - Debug build (with console): `python build.py --debug` or `build.bat debug`

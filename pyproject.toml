@@ -19,6 +19,8 @@ dev = [
     "pyinstaller>=5.14",
     "tomli>=2.4.1",
     "tomli_w>=1.2.0",
+    "ruff>=0.4",
+    "mypy>=1.10",
 ]
 
 [project.scripts]

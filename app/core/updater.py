@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
 import platform
 import subprocess
 import sys
+import tempfile
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Callable, Optional
@@ -31,7 +34,6 @@ def get_current_exe() -> Optional[Path]:
     exe = Path(sys.executable)
     if exe.exists():
         return exe
-    # After a startup rename sys.executable no longer exists — fall back to grammar-ai.exe.
     renamed = exe.parent / "grammar-ai.exe"
     if renamed.exists():
         return renamed
@@ -39,7 +41,7 @@ def get_current_exe() -> Optional[Path]:
 
 
 def cleanup_old_files() -> None:
-    """Delete any *-old.exe left over from a previous update."""
+    """Delete any *-old.exe left over from a previous update mechanism."""
     exe = get_current_exe()
     if exe is None:
         logger.debug("Not running as frozen executable; skipping old file cleanup")
@@ -93,16 +95,18 @@ def download_update(
     on_progress: Optional[Callable[[int], None]] = None,
 ) -> Optional[Path]:
     """
-    Download the update asset to the same directory as the current exe.
+    Download the update asset to the system temp directory.
     on_progress is called with an integer 0-100.
     Returns the destination path on success, None on failure.
     """
-    exe = get_current_exe()
-    if exe is None:
+    if get_current_exe() is None:
         return None
 
-    filename = url.rsplit("/", 1)[-1]
-    dest = exe.parent / filename
+    # Strip query-string params from the URL before extracting the filename.
+    filename = Path(urllib.parse.urlsplit(url).path).name
+    # Download to %TEMP%, not next to the running exe — avoids the AV heuristic
+    # of writing a new executable into the same directory as the running process.
+    dest = Path(tempfile.gettempdir()) / filename
 
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "grammar-ai-updater"})
@@ -130,7 +134,10 @@ def download_update(
 
 def apply_update(new_exe: Path) -> bool:
     """
-    Rename the current exe to *-old.exe and launch new_exe.
+    Hand the update off to a temporary batch script that runs after this process
+    exits: it waits for the PID to disappear, copies the new exe into place, then
+    relaunches it.  The app never self-renames or directly executes a downloaded
+    binary, which eliminates the AV heuristics that trigger false positives.
     Returns True on success; the caller must exit the process afterwards.
     """
     exe = get_current_exe()
@@ -138,16 +145,54 @@ def apply_update(new_exe: Path) -> bool:
         logger.debug("Not running as frozen executable; skipping update application")
         return False
 
-    old_exe = exe.with_name(exe.stem + EXE_OLD_SUFFIX + exe.suffix)
+    pid = os.getpid()
+    # PID-based name avoids collision if two app instances run simultaneously.
+    bat = Path(tempfile.gettempdir()) / f"grammar_ai_update_{pid}.bat"
+    script = (
+        "@echo off\n"
+        "set MAX_WAIT=60\n"
+        "set /a WAITED=0\n"
+        ":wait\n"
+        # /FO LIST produces "PID: <n>" — reliable without space-padding assumptions.
+        f'tasklist /FI "PID eq {pid}" /FO LIST 2>NUL | find "PID:" >NUL\n'
+        "if not errorlevel 1 (\n"
+        "    timeout /t 1 /nobreak >NUL\n"
+        "    set /a WAITED+=1\n"
+        "    if !WAITED! lss !MAX_WAIT! goto :wait\n"
+        "    goto :cleanup\n"
+        ")\n"
+        # Retry copy up to 5 times — AV scanners may lock the file briefly.
+        "set /a TRIES=0\n"
+        ":copy\n"
+        f'copy /Y "{new_exe}" "{exe}" >NUL\n'
+        "if not errorlevel 1 goto :launch\n"
+        "set /a TRIES+=1\n"
+        "if !TRIES! lss 5 (\n"
+        "    timeout /t 2 /nobreak >NUL\n"
+        "    goto :copy\n"
+        ")\n"
+        "goto :cleanup\n"
+        ":launch\n"
+        f'start "" "{exe}"\n'
+        ":cleanup\n"
+        f'del /F /Q "{new_exe}" 2>NUL\n'
+        # (goto) closes cmd's handle to the script before del runs — reliable self-delete.
+        '(goto) 2>NUL & del "%~f0"\n'
+    )
     try:
-        exe.rename(old_exe)
-        subprocess.Popen([str(new_exe)])
+        # Use system ANSI encoding — cmd.exe reads batch files as ANSI by default.
+        # UTF-8 without BOM breaks on non-ASCII paths (Cyrillic, CJK, etc.).
+        bat.write_text(script, encoding="mbcs")
+        subprocess.Popen(
+            ["cmd.exe", "/V:ON", "/C", str(bat)],
+            creationflags=subprocess.CREATE_NO_WINDOW,  # type: ignore[attr-defined]
+        )
+        logger.info(f"Update script launched for {exe.name}; exiting for handoff")
         return True
     except Exception as e:
-        logger.error(f"Failed to apply update {new_exe.name}: {e}")
-        if old_exe.exists() and not exe.exists():
-            try:
-                old_exe.rename(exe)
-            except OSError as oe:
-                logger.warning(f"Rollback rename failed: {oe}")
+        logger.error(f"Failed to launch update script: {e}")
+        try:
+            bat.unlink(missing_ok=True)
+        except OSError:
+            pass
         return False
