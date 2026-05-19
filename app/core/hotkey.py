@@ -48,29 +48,29 @@ class HotkeyManager:
             return
         self._enabled = False
         if self._tid:
-            ctypes.windll.user32.PostThreadMessageW(self._tid, WM_QUIT, 0, 0)
+            ctypes.windll.user32.PostThreadMessageW(self._tid, WM_QUIT, 0, 0)  # type: ignore[attr-defined]
         logger.info("Hotkey disabled")
 
     def _message_loop(self) -> None:
-        self._tid = ctypes.windll.kernel32.GetCurrentThreadId()
-        ok = ctypes.windll.user32.RegisterHotKey(
+        self._tid = ctypes.windll.kernel32.GetCurrentThreadId()  # type: ignore[attr-defined]
+        ok = ctypes.windll.user32.RegisterHotKey(  # type: ignore[attr-defined]
             None, _HOTKEY_ID, MOD_CONTROL | MOD_SHIFT, VK_SPACE
         )
         if not ok:
-            err = ctypes.GetLastError()
+            err = ctypes.GetLastError()  # type: ignore[attr-defined]
             logger.error(f"RegisterHotKey failed (error {err}) — hotkey unavailable")
             self._enabled = False
             return
 
         msg = ctypes.wintypes.MSG()
         try:
-            while ctypes.windll.user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
+            while ctypes.windll.user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:  # type: ignore[attr-defined]
                 if msg.message == WM_HOTKEY and msg.wParam == _HOTKEY_ID:
                     # Capture the source window before anything can shift focus.
-                    self.last_hwnd = ctypes.windll.user32.GetForegroundWindow()
+                    self.last_hwnd = ctypes.windll.user32.GetForegroundWindow()  # type: ignore[attr-defined]
                     threading.Thread(target=self._capture, daemon=True).start()
         finally:
-            ctypes.windll.user32.UnregisterHotKey(None, _HOTKEY_ID)
+            ctypes.windll.user32.UnregisterHotKey(None, _HOTKEY_ID)  # type: ignore[attr-defined]
 
     def _capture(self) -> None:
         if not self._capture_lock.acquire(blocking=False):
